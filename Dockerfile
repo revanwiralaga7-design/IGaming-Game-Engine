@@ -1,6 +1,25 @@
-# Runtime Dockerfile for casino-engine
-# Build the application first using: ./build.sh
+# Multi-stage Dockerfile for casino-engine
 
+# ---- Build stage ----
+FROM eclipse-temurin:21-jdk-alpine AS build
+
+WORKDIR /src
+
+# Copy Gradle wrapper and config first for better caching
+COPY gradlew settings.gradle.kts build.gradle.kts ./
+COPY gradle/ gradle/
+
+# Download dependencies (cached unless build files change)
+RUN chmod +x gradlew && ./gradlew dependencies --no-daemon || true
+
+# Copy source code
+COPY src/ src/
+COPY proto/ proto/ 2>/dev/null || true
+
+# Build the distribution tar
+RUN ./gradlew distTar --no-daemon
+
+# ---- Runtime stage ----
 FROM eclipse-temurin:21-jre-alpine
 
 LABEL maintainer="NekGambling"
@@ -11,8 +30,8 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 WORKDIR /app
 
-# Copy pre-built distribution
-COPY build/distributions/casino-engine-*.tar /tmp/
+# Copy built distribution from build stage
+COPY --from=build /src/build/distributions/casino-engine-*.tar /tmp/
 
 # Extract and setup
 RUN tar -xf /tmp/casino-engine-*.tar -C /app --strip-components=1 && \
